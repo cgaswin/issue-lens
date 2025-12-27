@@ -52,21 +52,28 @@ export function AssigneeFilter({ assignees, selectedAssignees, onChange }: Assig
       {selectedAssignees.length > 0 && (
         <div className="flex flex-wrap gap-1">
           {selectedAssignees.map((login) => {
-            // Find avatar for selected user
+            // Find avatar for selected user, fallback to GitHub's public avatar URL
             const assignee = assignees.find(a => a.login === login);
+            const avatarUrl = assignee?.avatarUrl || `https://github.com/${login}.png?size=40`;
             return (
               <span
                 key={login}
                 className="inline-flex items-center gap-1 pl-1 pr-2 py-0.5 text-xs bg-accent text-foreground rounded-full cursor-pointer hover:bg-accent/80"
                 onClick={() => removeAssignee(login)}
               >
-                {assignee?.avatarUrl ? (
-                  <img src={assignee.avatarUrl} alt="" className="w-4 h-4 rounded-full" />
-                ) : (
-                  <div className="w-4 h-4 rounded-full bg-muted flex items-center justify-center text-[8px] font-bold">
-                    {login[0].toUpperCase()}
-                  </div>
-                )}
+                <img
+                  src={avatarUrl}
+                  alt=""
+                  className="w-4 h-4 rounded-full"
+                  onError={(e) => {
+                    // Fallback to initial if image fails to load
+                    e.currentTarget.style.display = 'none';
+                    e.currentTarget.nextElementSibling?.classList.remove('hidden');
+                  }}
+                />
+                <div className="w-4 h-4 rounded-full bg-muted items-center justify-center text-[8px] font-bold hidden">
+                  {login[0].toUpperCase()}
+                </div>
                 {login}
                 <X className="h-3 w-3 ml-0.5 opacity-50" />
               </span>

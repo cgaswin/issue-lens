@@ -1,1 +1,25 @@
 @import "../../src/index.css";
+
+/* Hide scrollbars but keep scroll functionality */
+.issue-lens-scrollable {
+  scrollbar-width: none;
+  /* Firefox */
+  -ms-overflow-style: none;
+  /* IE/Edge */
+  scroll-behavior: smooth;
+}
+
+.issue-lens-scrollable::-webkit-scrollbar {
+  display: none;
+  /* Chrome, Safari, Opera */
+}
+
+/* Apply to all scrollable areas in the panel */
+[data-issue-lens] *::-webkit-scrollbar {
+  display: none;
+}
+
+[data-issue-lens] * {
+  scrollbar-width: none;
+  scroll-behavior: smooth;
+}

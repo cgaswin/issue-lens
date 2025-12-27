@@ -1,4 +1,4 @@
-import { RotateCcw } from 'lucide-react';
+import { RotateCcw, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -9,7 +9,7 @@ import {
   DrawerContent,
   DrawerFooter
 } from './Drawer';
-import { FilterState } from '../types';
+import { FilterState, Label } from '../types';
 import { NoPrFilter } from './filters/NoPrFilter';
 import { NoAssigneeFilter } from './filters/NoAssigneeFilter';
 import { LabelFilter } from './filters/LabelFilter';
@@ -24,9 +24,10 @@ interface FilterPanelProps {
   filters: FilterState;
   setFilters: (updates: Partial<FilterState>) => void;
   resetFilters: () => void;
-  labels: string[];
+  labels: Label[];
   assignees: Assignee[];
   activeFilterCount: number;
+  issueCount: number | null;
   onApply: () => void;
 }
 
@@ -39,13 +40,14 @@ export function FilterPanel({
   labels,
   assignees,
   activeFilterCount,
+  issueCount,
   onApply,
 }: FilterPanelProps) {
   return (
     <Drawer open={open} onClose={() => onOpenChange(false)}>
       {/* Header */}
       <DrawerHeader>
-        <div className="flex items-center justify-between pr-6">
+        <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <DrawerTitle>Filters</DrawerTitle>
             {activeFilterCount > 0 && (
@@ -54,19 +56,35 @@ export function FilterPanel({
               </Badge>
             )}
           </div>
-          {activeFilterCount > 0 && (
+          <div className="flex items-center gap-1">
+            {activeFilterCount > 0 && (
+              <button
+                onClick={resetFilters}
+                className="text-xs font-medium text-muted-foreground hover:text-primary transition-colors flex items-center gap-1 px-2 py-1 rounded-md hover:bg-accent cursor-pointer"
+              >
+                <RotateCcw className="h-3 w-3" />
+                Clear all
+              </button>
+            )}
             <button
-              onClick={resetFilters}
-              className="text-xs font-medium text-muted-foreground hover:text-primary transition-colors flex items-center gap-1 px-2 py-1 rounded-md hover:bg-accent cursor-pointer"
+              onClick={() => onOpenChange(false)}
+              className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors cursor-pointer"
+              aria-label="Close"
             >
-              <RotateCcw className="h-3 w-3" />
-              Clear all
+              <X className="h-4 w-4" />
             </button>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <DrawerDescription>
+            Filter issues by various criteria
+          </DrawerDescription>
+          {issueCount !== null && (
+            <span className="text-xs font-medium text-muted-foreground">
+              · {issueCount.toLocaleString()} open
+            </span>
           )}
         </div>
-        <DrawerDescription>
-          Filter issues by various criteria
-        </DrawerDescription>
       </DrawerHeader>
 
       {/* Content */}

@@ -49,6 +49,7 @@ export function Drawer({ open, onClose, children, className }: DrawerProps) {
       <div
         role="dialog"
         aria-modal="true"
+        data-issue-lens="true"
         className={cn(
           "fixed inset-y-0 right-0 z-[9999] flex flex-col",
           "w-[360px] sm:w-[400px] max-w-[90vw]",
@@ -59,15 +60,6 @@ export function Drawer({ open, onClose, children, className }: DrawerProps) {
         )}
         onAnimationEnd={onAnimationEnd}
       >
-        {/* Close button */}
-        <button
-          onClick={onClose}
-          className="absolute top-3 right-3 z-10 p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors cursor-pointer" // Added cursor-pointer
-          aria-label="Close"
-        >
-          <XIcon className="h-4 w-4" />
-        </button>
-
         {children}
       </div>
     </>

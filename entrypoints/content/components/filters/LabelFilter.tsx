@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { Search, Tag, X, Check } from 'lucide-react';
+import { Label } from '../../types';
 
 interface LabelFilterProps {
-  labels: string[];
+  labels: Label[];
   selectedLabels: string[];
   onChange: (labels: string[]) => void;
 }
@@ -21,24 +22,45 @@ function Checkbox({ checked }: { checked: boolean }) {
   );
 }
 
+function LabelPill({ label, showClose, onClose }: { label: Label; showClose?: boolean; onClose?: () => void }) {
+  return (
+    <span
+      className="inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full cursor-pointer transition-opacity hover:opacity-80"
+      style={{
+        backgroundColor: label.color,
+        color: label.textColor,
+      }}
+      onClick={onClose}
+    >
+      {label.name}
+      {showClose && <X className="h-3 w-3" />}
+    </span>
+  );
+}
+
 export function LabelFilter({ labels, selectedLabels, onChange }: LabelFilterProps) {
   const [search, setSearch] = useState('');
 
   const filteredLabels = labels.filter((label) =>
-    label.toLowerCase().includes(search.toLowerCase())
+    label.name.toLowerCase().includes(search.toLowerCase())
   );
 
-  const toggleLabel = (label: string) => {
-    if (selectedLabels.includes(label)) {
-      onChange(selectedLabels.filter((l) => l !== label));
+  const toggleLabel = (labelName: string) => {
+    if (selectedLabels.includes(labelName)) {
+      onChange(selectedLabels.filter((l) => l !== labelName));
     } else {
-      onChange([...selectedLabels, label]);
+      onChange([...selectedLabels, labelName]);
     }
   };
 
-  const removeLabel = (label: string) => {
-    onChange(selectedLabels.filter((l) => l !== label));
+  const removeLabel = (labelName: string) => {
+    onChange(selectedLabels.filter((l) => l !== labelName));
   };
+
+  // Get Label objects for selected labels
+  const selectedLabelObjects = selectedLabels
+    .map(name => labels.find(l => l.name === name))
+    .filter((l): l is Label => l !== undefined);
 
   return (
     <div className="space-y-2">
@@ -47,18 +69,16 @@ export function LabelFilter({ labels, selectedLabels, onChange }: LabelFilterPro
         Labels
       </label>
 
-      {/* Selected labels */}
-      {selectedLabels.length > 0 && (
+      {/* Selected labels as colored pills */}
+      {selectedLabelObjects.length > 0 && (
         <div className="flex flex-wrap gap-1">
-          {selectedLabels.map((label) => (
-            <span
-              key={label}
-              className="inline-flex items-center gap-1 px-2 py-0.5 text-xs bg-accent text-foreground rounded-full cursor-pointer hover:bg-accent/80"
-              onClick={() => removeLabel(label)}
-            >
-              {label}
-              <X className="h-3 w-3" />
-            </span>
+          {selectedLabelObjects.map((label) => (
+            <LabelPill
+              key={label.name}
+              label={label}
+              showClose
+              onClose={() => removeLabel(label.name)}
+            />
           ))}
         </div>
       )}
@@ -82,7 +102,7 @@ export function LabelFilter({ labels, selectedLabels, onChange }: LabelFilterPro
         />
       </div>
 
-      {/* Label list */}
+      {/* Label list with colored pills */}
       <div className="max-h-[140px] overflow-y-auto border border-border rounded-md bg-card">
         {filteredLabels.length === 0 ? (
           <div className="text-xs text-muted-foreground py-4 text-center">
@@ -92,12 +112,20 @@ export function LabelFilter({ labels, selectedLabels, onChange }: LabelFilterPro
           <div className="py-1">
             {filteredLabels.map((label) => (
               <div
-                key={label}
+                key={label.name}
                 className="flex items-center gap-2 px-2 py-1.5 hover:bg-accent cursor-pointer group"
-                onClick={() => toggleLabel(label)}
+                onClick={() => toggleLabel(label.name)}
               >
-                <Checkbox checked={selectedLabels.includes(label)} />
-                <span className="text-sm text-foreground truncate">{label}</span>
+                <Checkbox checked={selectedLabels.includes(label.name)} />
+                <span
+                  className="text-xs px-2 py-0.5 rounded-full truncate"
+                  style={{
+                    backgroundColor: label.color,
+                    color: label.textColor,
+                  }}
+                >
+                  {label.name}
+                </span>
               </div>
             ))}
           </div>

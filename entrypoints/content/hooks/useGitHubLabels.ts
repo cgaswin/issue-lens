@@ -1,35 +1,76 @@
 import { useState, useEffect } from 'react';
-import { Assignee } from '../types';
+import { Assignee, Label } from '../types';
 
 /**
  * Hook to extract labels and assignees.
  * Includes strict cleaning logic to avoid UI noise and bad data.
  */
 export function useGitHubLabels() {
-  const [labels, setLabels] = useState<string[]>([]);
+  const [labels, setLabels] = useState<Label[]>([]);
   const [assignees, setAssignees] = useState<Assignee[]>([]);
 
   useEffect(() => {
     const extractData = async () => {
       // --- LABELS EXTRACTION ---
-      const labelSet = new Set<string>();
+      // Use Map to store labels with colors (keyed by name to dedupe)
+      const labelMap = new Map<string, Label>();
 
-      const addLabel = (name: string | null | undefined) => {
-        if (!name) return;
+      // Default colors for labels without color info
+      const defaultColor = 'rgba(128, 128, 128, 0.18)';
+      const defaultTextColor = 'rgb(200, 200, 200)';
+
+      const isValidLabelName = (name: string | null | undefined): name is string => {
+        if (!name) return false;
         const cleanName = name.trim();
-        if (cleanName.length > 0 &&
+        return cleanName.length > 0 &&
           cleanName.length < 50 &&
           cleanName !== 'Public' &&
           cleanName !== 'Private' &&
           !cleanName.includes('Issue Lens') &&
           !cleanName.includes('Sort') &&
-          !cleanName.includes('Filter')
-        ) {
-          labelSet.add(cleanName);
+          !cleanName.includes('Filter');
+      };
+
+      const addLabel = (name: string, color?: string, textColor?: string) => {
+        const cleanName = name.trim();
+        if (!isValidLabelName(cleanName)) return;
+
+        // Only update if we don't have this label yet, or if we have better color info
+        const existing = labelMap.get(cleanName);
+        if (!existing || (color && color !== defaultColor)) {
+          labelMap.set(cleanName, {
+            name: cleanName,
+            color: color || existing?.color || defaultColor,
+            textColor: textColor || existing?.textColor || defaultTextColor,
+          });
         }
       };
 
-      // 1. Fetch from /labels page
+      // 1. Scrape current page FIRST to get colors from TrailingBadge elements
+      // GitHub's React/styled-components UI (2024+)
+      document.querySelectorAll('[class*="TrailingBadge-module__container"] a').forEach(el => {
+        // Find the first span with TokenBase class to get computed styles
+        const tokenSpan = el.querySelector('span');
+        if (!tokenSpan) return;
+
+        const style = getComputedStyle(tokenSpan);
+        const bgColor = style.backgroundColor;
+        const txtColor = style.color;
+
+        // Find innermost spans (no children) and take only the first one for the name
+        const spans = el.querySelectorAll('span');
+        for (const span of spans) {
+          if (span.children.length === 0) {
+            const text = span.textContent?.trim();
+            if (text && isValidLabelName(text)) {
+              addLabel(text, bgColor, txtColor);
+              break;
+            }
+          }
+        }
+      });
+
+      // 2. Fetch from /labels page for additional labels not on current page
       const path = window.location.pathname.split('/');
       if (path.length >= 3) {
         const repoPath = `/${path[1]}/${path[2]}`;
@@ -40,13 +81,21 @@ export function useGitHubLabels() {
             const parser = new DOMParser();
             const doc = parser.parseFromString(text, 'text/html');
 
-            doc.querySelectorAll('.js-label-link .Label, .js-label-link, span.Label').forEach(el => {
-              if (el.closest('.Label--gray')) return;
-              addLabel(el.textContent);
+            // Use data-name attribute (contains only label name, no description)
+            doc.querySelectorAll('[data-name]').forEach(el => {
+              const name = el.getAttribute('data-name');
+              if (name) addLabel(name);
             });
 
-            doc.querySelectorAll('[data-name]').forEach(el => {
-              addLabel(el.getAttribute('data-name'));
+            // Extract from href as fallback
+            doc.querySelectorAll('a[href*="/labels/"]').forEach(el => {
+              const href = el.getAttribute('href');
+              if (href) {
+                const match = href.match(/\/labels\/([^/?]+)/);
+                if (match) {
+                  addLabel(decodeURIComponent(match[1]));
+                }
+              }
             });
           }
         } catch (e) {
@@ -54,14 +103,15 @@ export function useGitHubLabels() {
         }
       }
 
-      // 2. Scrape current page
-      document.querySelectorAll('.IssueLabel').forEach(el => addLabel(el.textContent));
-      document.querySelectorAll('[data-name]').forEach(el => addLabel(el.getAttribute('data-name')));
-      document.querySelectorAll('[data-filter-item-type="label"] [data-filter-item-id]').forEach(el => {
-        addLabel(el.getAttribute('data-filter-item-id'));
+      // 3. Additional page scraping for labels without colors
+      document.querySelectorAll('[data-name]').forEach(el => {
+        const name = el.getAttribute('data-name');
+        if (name) addLabel(name);
       });
 
-      setLabels(Array.from(labelSet).sort());
+      // Convert to sorted array
+      const sortedLabels = Array.from(labelMap.values()).sort((a, b) => a.name.localeCompare(b.name));
+      setLabels(sortedLabels);
 
 
       // --- ASSIGNEES EXTRACTION ---
@@ -132,13 +182,32 @@ export function useGitHubLabels() {
       setAssignees(assigneesList);
     };
 
-    extractData();
+    // Multiple extraction attempts to handle timing issues
+    const timeouts: NodeJS.Timeout[] = [];
+    [100, 500, 1000, 2000, 3000].forEach(delay => {
+      timeouts.push(setTimeout(extractData, delay));
+    });
 
-    const handleTurbo = () => setTimeout(extractData, 1000);
+    // Watch for DOM changes that might indicate labels loading
+    const observer = new MutationObserver((mutations) => {
+      const hasRelevantChanges = mutations.some(m =>
+        m.type === 'childList' && m.addedNodes.length > 0
+      );
+      if (hasRelevantChanges) {
+        // Debounce extraction
+        setTimeout(extractData, 300);
+      }
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+
+    const handleTurbo = () => setTimeout(extractData, 500);
     document.addEventListener('turbo:load', handleTurbo);
     document.addEventListener('turbo:render', handleTurbo);
+    window.addEventListener('popstate', () => setTimeout(extractData, 500));
 
     return () => {
+      timeouts.forEach(clearTimeout);
+      observer.disconnect();
       document.removeEventListener('turbo:load', handleTurbo);
       document.removeEventListener('turbo:render', handleTurbo);
     };

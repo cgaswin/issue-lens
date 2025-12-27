@@ -18,3 +18,9 @@ export interface Assignee {
   login: string;
   avatarUrl?: string;
 }
+
+export interface Label {
+  name: string;
+  color: string;      // Background color (e.g., "rgba(215, 58, 74, 0.18)")
+  textColor: string;  // Text color (e.g., "rgb(236, 161, 168)")
+}

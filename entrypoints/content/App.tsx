@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect } from 'react';
 import { FilterPanel } from './components/FilterPanel';
 import { useFilterState } from './hooks/useFilterState';
 import { useGitHubLabels } from './hooks/useGitHubLabels.ts';
+import { useIssueCount } from './hooks/useIssueCount';
 
 const PANEL_STATE_KEY = 'issue-lens-panel-open';
 
@@ -16,6 +17,7 @@ export default function App() {
 
   const { filters, setFilters, resetFilters, activeFilterCount } = useFilterState();
   const { labels, assignees } = useGitHubLabels();
+  const { openCount } = useIssueCount();
 
   // Listen for open panel event from injected button
   useEffect(() => {
@@ -124,6 +126,7 @@ export default function App() {
       labels={labels}
       assignees={assignees}
       activeFilterCount={activeFilterCount}
+      issueCount={openCount}
       onApply={handleApplyFilters}
     />
   );
