@@ -67,6 +67,7 @@ export function LabelFilter({ labels, selectedLabels, onChange }: LabelFilterPro
       <label className="flex items-center gap-1.5 text-xs font-semibold text-foreground uppercase tracking-wide">
         <Tag className="h-3 w-3" />
         Labels
+        <span className="text-muted-foreground font-normal ml-0.5">({labels.length})</span>
       </label>
 
       {/* Selected labels as colored pills */}

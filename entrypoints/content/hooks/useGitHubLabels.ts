@@ -46,6 +46,24 @@ export function useGitHubLabels() {
         }
       };
 
+      // --- ASSIGNEES MAP ---
+      const assigneeMap = new Map<string, string>(); // login -> avatarUrl
+
+      const addAssignee = (login: string | null | undefined, avatar?: string | null) => {
+        if (!login) return;
+        const cleanLogin = login.trim();
+        if (cleanLogin &&
+          /^[a-zA-Z0-9-]+$/.test(cleanLogin) &&
+          !cleanLogin.includes('/') &&
+          cleanLogin !== 'issue-lens'
+        ) {
+          // Keep existing avatar if new one is missing, otherwise update
+          if (!assigneeMap.has(cleanLogin) || avatar) {
+            assigneeMap.set(cleanLogin, avatar || assigneeMap.get(cleanLogin) || '');
+          }
+        }
+      };
+
       // 1. Scrape current page FIRST to get colors from TrailingBadge elements
       // GitHub's React/styled-components UI (2024+)
       document.querySelectorAll('[class*="TrailingBadge-module__container"] a').forEach(el => {
@@ -70,37 +88,69 @@ export function useGitHubLabels() {
         }
       });
 
-      // 2. Fetch from /labels page for additional labels not on current page
+      // 2. Fetch labels from GitHub API
       const path = window.location.pathname.split('/');
       if (path.length >= 3) {
-        const repoPath = `/${path[1]}/${path[2]}`;
-        try {
-          const response = await fetch(`${repoPath}/labels`);
-          if (response.ok) {
-            const text = await response.text();
-            const parser = new DOMParser();
-            const doc = parser.parseFromString(text, 'text/html');
+        const owner = path[1];
+        const repo = path[2];
+        const apiUrl = `https://api.github.com/repos/${owner}/${repo}`;
 
-            // Use data-name attribute (contains only label name, no description)
-            doc.querySelectorAll('[data-name]').forEach(el => {
-              const name = el.getAttribute('data-name');
-              if (name) addLabel(name);
-            });
+        // Helper to fetch all pages from API
+        const fetchAllPages = async (endpoint: string, processItem: (item: any) => void) => {
+          let page = 1;
+          const maxPages = 20;
 
-            // Extract from href as fallback
-            doc.querySelectorAll('a[href*="/labels/"]').forEach(el => {
-              const href = el.getAttribute('href');
-              if (href) {
-                const match = href.match(/\/labels\/([^/?]+)/);
-                if (match) {
-                  addLabel(decodeURIComponent(match[1]));
+          while (page <= maxPages) {
+            try {
+              // API requests are rate limited (60/hr/IP unauthenticated)
+              const response = await fetch(`${apiUrl}/${endpoint}?page=${page}&per_page=100`);
+
+              if (!response.ok) {
+                if (response.status === 403 || response.status === 429) {
+                  console.warn(`[Issue Lens] API rate limited for ${endpoint}`);
                 }
+                break;
               }
-            });
+
+              const data = await response.json();
+              if (!Array.isArray(data) || data.length === 0) break;
+
+              data.forEach(processItem);
+
+              // If we got fewer than 100 items, we've reached the end
+              if (data.length < 100) break;
+
+              page++;
+            } catch (e) {
+              console.error(`[Issue Lens] Error fetching ${endpoint}:`, e);
+              break;
+            }
           }
-        } catch (e) {
-          console.error('[Issue Lens] Failed fetch labels', e);
-        }
+        };
+
+        // Helper to determine text color based on background luminance
+        const getTextColor = (hex: string) => {
+          const r = parseInt(hex.substring(0, 2), 16);
+          const g = parseInt(hex.substring(2, 4), 16);
+          const b = parseInt(hex.substring(4, 6), 16);
+          const yiq = ((r * 299) + (g * 587) + (b * 114)) / 1000;
+          return (yiq >= 128) ? 'black' : 'white';
+        };
+
+        // Fetch Labels from API
+        await fetchAllPages('labels', (item) => {
+          if (item && item.name) {
+            const textColor = getTextColor(item.color);
+            addLabel(item.name, `#${item.color}`, textColor);
+          }
+        });
+
+        // Fetch Assignees from API
+        await fetchAllPages('assignees', (item) => {
+          if (item && item.login) {
+            addAssignee(item.login, item.avatar_url);
+          }
+        });
       }
 
       // 3. Additional page scraping for labels without colors
@@ -113,24 +163,7 @@ export function useGitHubLabels() {
       const sortedLabels = Array.from(labelMap.values()).sort((a, b) => a.name.localeCompare(b.name));
       setLabels(sortedLabels);
 
-
-      // --- ASSIGNEES EXTRACTION ---
-      const assigneeMap = new Map<string, string>(); // login -> avatarUrl
-
-      const addAssignee = (name: string | null | undefined, avatar?: string | null) => {
-        if (!name) return;
-        const cleanName = name.trim();
-        if (cleanName &&
-          /^[a-zA-Z0-9-]+$/.test(cleanName) &&
-          !cleanName.includes('/') &&
-          cleanName !== 'issue-lens'
-        ) {
-          // Keep existing avatar if new one is missing, otherwise update
-          if (!assigneeMap.has(cleanName) || avatar) {
-            assigneeMap.set(cleanName, avatar || assigneeMap.get(cleanName) || '');
-          }
-        }
-      };
+      // --- ADDITIONAL ASSIGNEE EXTRACTION FROM CURRENT PAGE ---
 
       // 1. Avatars (Best source for images)
       document.querySelectorAll('img.avatar').forEach(el => {
@@ -143,16 +176,14 @@ export function useGitHubLabels() {
 
       // 2. Filter Dropdown
       document.querySelectorAll('[data-filter-item-type="assignee"] [data-filter-item-id]').forEach(el => {
-        const name = el.getAttribute('data-filter-item-id');
-        // Try to find avatar inside
+        const login = el.getAttribute('data-filter-item-id');
         const img = el.querySelector('img');
-        addAssignee(name, img?.getAttribute('src'));
+        addAssignee(login, img?.getAttribute('src'));
       });
 
-      // 3. User links
+      // 3. User links with hovercards
       document.querySelectorAll('a[data-hovercard-type="user"]').forEach(el => {
         const text = el.textContent?.trim();
-        // Try to find avatar img nearby or inside
         const img = el.querySelector('img') || el.closest('div')?.querySelector('img.avatar');
 
         if (text && !text.includes(' ') && !text.includes('\n')) {

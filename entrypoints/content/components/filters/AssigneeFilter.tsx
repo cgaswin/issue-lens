@@ -46,6 +46,7 @@ export function AssigneeFilter({ assignees, selectedAssignees, onChange }: Assig
       <label className="flex items-center gap-1.5 text-xs font-semibold text-foreground uppercase tracking-wide">
         <Users className="h-3 w-3" />
         Assignees
+        <span className="text-muted-foreground font-normal ml-0.5">({assignees.length})</span>
       </label>
 
       {/* Selected assignees */}
@@ -60,6 +61,7 @@ export function AssigneeFilter({ assignees, selectedAssignees, onChange }: Assig
                 key={login}
                 className="inline-flex items-center gap-1 pl-1 pr-2 py-0.5 text-xs bg-accent text-foreground rounded-full cursor-pointer hover:bg-accent/80"
                 onClick={() => removeAssignee(login)}
+                title={`@${login}`}
               >
                 <img
                   src={avatarUrl}
@@ -131,7 +133,9 @@ export function AssigneeFilter({ assignees, selectedAssignees, onChange }: Assig
                       {assignee.login.slice(0, 2)}
                     </div>
                   )}
-                  <span className="text-sm text-foreground truncate">@{assignee.login}</span>
+                  <span className="text-sm text-foreground truncate">
+                    @{assignee.login}
+                  </span>
                 </div>
               </div>
             ))}
