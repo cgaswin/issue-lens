@@ -16,16 +16,42 @@ function createIssueLensButton(onClick: () => void): HTMLElement {
   button.setAttribute('data-variant', 'default');
   button.style.cursor = 'pointer';
 
-  button.innerHTML = `
-    <span data-component="buttonContent" data-align="center" class="prc-Button-ButtonContent-Iohp5">
-      <span data-component="leadingVisual" class="prc-Button-Visual-YNt2F prc-Button-VisualWrap-E4cnq">
-        <svg aria-hidden="true" focusable="false" viewBox="0 0 16 16" width="16" height="16" fill="currentColor" display="inline-block" overflow="visible" style="vertical-align: text-bottom;">
-          <path d="M.75 3h14.5a.75.75 0 0 1 0 1.5H.75a.75.75 0 0 1 0-1.5ZM3 7.75A.75.75 0 0 1 3.75 7h8.5a.75.75 0 0 1 0 1.5h-8.5A.75.75 0 0 1 3 7.75Zm3 4a.75.75 0 0 1 .75-.75h2.5a.75.75 0 0 1 0 1.5h-2.5a.75.75 0 0 1-.75-.75Z"></path>
-        </svg>
-      </span>
-      <span data-component="text" class="prc-Button-Label-FWkx3">Issue Lens</span>
-    </span>
-  `;
+  // Create content structure safely without innerHTML
+  const contentSpan = document.createElement('span');
+  contentSpan.setAttribute('data-component', 'buttonContent');
+  contentSpan.setAttribute('data-align', 'center');
+  contentSpan.className = 'prc-Button-ButtonContent-Iohp5';
+
+  const visualSpan = document.createElement('span');
+  visualSpan.setAttribute('data-component', 'leadingVisual');
+  visualSpan.className = 'prc-Button-Visual-YNt2F prc-Button-VisualWrap-E4cnq';
+
+  // Create SVG icon
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('aria-hidden', 'true');
+  svg.setAttribute('focusable', 'false');
+  svg.setAttribute('viewBox', '0 0 16 16');
+  svg.setAttribute('width', '16');
+  svg.setAttribute('height', '16');
+  svg.setAttribute('fill', 'currentColor');
+  svg.setAttribute('display', 'inline-block');
+  svg.setAttribute('overflow', 'visible');
+  svg.style.verticalAlign = 'text-bottom';
+
+  const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  path.setAttribute('d', 'M.75 3h14.5a.75.75 0 0 1 0 1.5H.75a.75.75 0 0 1 0-1.5ZM3 7.75A.75.75 0 0 1 3.75 7h8.5a.75.75 0 0 1 0 1.5h-8.5A.75.75 0 0 1 3 7.75Zm3 4a.75.75 0 0 1 .75-.75h2.5a.75.75 0 0 1 0 1.5h-2.5a.75.75 0 0 1-.75-.75Z');
+  
+  svg.appendChild(path);
+  visualSpan.appendChild(svg);
+
+  const textSpan = document.createElement('span');
+  textSpan.setAttribute('data-component', 'text');
+  textSpan.className = 'prc-Button-Label-FWkx3';
+  textSpan.textContent = 'Issue Lens';
+
+  contentSpan.appendChild(visualSpan);
+  contentSpan.appendChild(textSpan);
+  button.appendChild(contentSpan);
 
   button.addEventListener('click', (e) => {
     e.preventDefault();
