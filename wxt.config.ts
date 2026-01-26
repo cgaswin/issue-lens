@@ -9,6 +9,12 @@ export default defineConfig({
     name: 'Issue Lens',
     permissions: ['storage'],
     host_permissions: ['https://api.github.com/*'],
+    browser_specific_settings: {
+      gecko: {
+        id: '{da070c02-e25f-4d92-911e-0899882294e0}',
+        strict_min_version: '109.0'
+      }
+    }
   },
   vite: () => ({
     plugins: [tailwindcss()],
