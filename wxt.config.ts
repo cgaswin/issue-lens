@@ -12,13 +12,10 @@ export default defineConfig({
     browser_specific_settings: {
       gecko: {
         id: '{da070c02-e25f-4d92-911e-0899882294e0}',
-        strict_min_version: '128.0',
+        strict_min_version: '142.0',
         // @ts-ignore - WXT types might not have this new field yet
         data_collection_permissions: {
-          ad_interaction: false,
-          search_query: false,
-          tab_history: false,
-          web_history: false
+          required: ['none']
         }
       }
     }
