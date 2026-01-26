@@ -103,6 +103,29 @@ export default defineContentScript({
     // Inject button after page is ready
     setTimeout(tryInject, 500);
 
+    // Watch for the specific toolbar container to be added to DOM
+    const observer = new MutationObserver((mutations) => {
+      // Fast check if our container might be present
+      const addedNodes = mutations.flatMap(m => Array.from(m.addedNodes));
+      const hasRelevantUpdates = addedNodes.some(node => 
+        node instanceof Element && (
+          node.classList?.contains('SearchBarActions-module__buttons--DBEMp') || 
+          node.querySelector?.('.SearchBarActions-module__buttons--DBEMp') ||
+          node.querySelector?.('[class*="SearchBarActions-module__buttons"]')
+        )
+      );
+      
+      if (hasRelevantUpdates) {
+        tryInject();
+      }
+    });
+    
+    // Start observing the document body for changes
+    observer.observe(document.body, { 
+      childList: true, 
+      subtree: true 
+    });
+
     // Re-inject on GitHub's turbo navigation
     document.addEventListener('turbo:load', () => setTimeout(tryInject, 300));
     document.addEventListener('turbo:render', () => setTimeout(tryInject, 300));

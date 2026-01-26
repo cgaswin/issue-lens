@@ -93,12 +93,42 @@ export function useGitHubLabels() {
       if (path.length >= 3) {
         const owner = path[1];
         const repo = path[2];
+        const cacheKeyLabels = `issue-lens:v1:${owner}:${repo}:labels`;
+        const cacheKeyAssignees = `issue-lens:v1:${owner}:${repo}:assignees`;
+        const CACHE_DURATION = 60 * 60 * 1000; // 1 hour
+
+        // Helper to check cache
+        const getCachedData = async (key: string) => {
+          try {
+            const result = await browser.storage.local.get(key);
+            const cached = result[key] as { timestamp: number; data: any[] } | undefined;
+            if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
+              return cached.data;
+            }
+          } catch (e) {
+            console.error('[Issue Lens] Cache read error:', e);
+          }
+          return null;
+        };
+
+        // Helper to set cache
+        const setCachedData = async (key: string, data: any[]) => {
+          try {
+            await browser.storage.local.set({
+              [key]: { timestamp: Date.now(), data }
+            });
+          } catch (e) {
+            console.error('[Issue Lens] Cache write error:', e);
+          }
+        };
+
         const apiUrl = `https://api.github.com/repos/${owner}/${repo}`;
 
         // Helper to fetch all pages from API
         const fetchAllPages = async (endpoint: string, processItem: (item: any) => void) => {
           let page = 1;
           const maxPages = 20;
+          const allItems: any[] = [];
 
           while (page <= maxPages) {
             try {
@@ -115,6 +145,7 @@ export function useGitHubLabels() {
               const data = await response.json();
               if (!Array.isArray(data) || data.length === 0) break;
 
+              allItems.push(...data);
               data.forEach(processItem);
 
               // If we got fewer than 100 items, we've reached the end
@@ -126,6 +157,7 @@ export function useGitHubLabels() {
               break;
             }
           }
+          return allItems;
         };
 
         // Helper to determine text color based on background luminance
@@ -137,20 +169,45 @@ export function useGitHubLabels() {
           return (yiq >= 128) ? 'black' : 'white';
         };
 
-        // Fetch Labels from API
-        await fetchAllPages('labels', (item) => {
-          if (item && item.name) {
-            const textColor = getTextColor(item.color);
-            addLabel(item.name, `#${item.color}`, textColor);
+        // Fetch Labels
+        const cachedLabels = await getCachedData(cacheKeyLabels);
+        if (cachedLabels) {
+          cachedLabels.forEach((item: any) => {
+            if (item && item.name) {
+              const textColor = getTextColor(item.color);
+              addLabel(item.name, `#${item.color}`, textColor);
+            }
+          });
+        } else {
+          const allLabels = await fetchAllPages('labels', (item) => {
+            if (item && item.name) {
+              const textColor = getTextColor(item.color);
+              addLabel(item.name, `#${item.color}`, textColor);
+            }
+          });
+          if (allLabels.length > 0) {
+            setCachedData(cacheKeyLabels, allLabels);
           }
-        });
+        }
 
-        // Fetch Assignees from API
-        await fetchAllPages('assignees', (item) => {
-          if (item && item.login) {
-            addAssignee(item.login, item.avatar_url);
+        // Fetch Assignees
+        const cachedAssignees = await getCachedData(cacheKeyAssignees);
+        if (cachedAssignees) {
+          cachedAssignees.forEach((item: any) => {
+            if (item && item.login) {
+              addAssignee(item.login, item.avatar_url);
+            }
+          });
+        } else {
+          const allAssignees = await fetchAllPages('assignees', (item) => {
+            if (item && item.login) {
+              addAssignee(item.login, item.avatar_url);
+            }
+          });
+          if (allAssignees.length > 0) {
+            setCachedData(cacheKeyAssignees, allAssignees);
           }
-        });
+        }
       }
 
       // 3. Additional page scraping for labels without colors

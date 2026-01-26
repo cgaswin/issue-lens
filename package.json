@@ -1,8 +1,9 @@
 {
-  "name": "wxt-react-starter",
-  "description": "manifest.json description",
+  "name": "issue-lens",
+  "description": "Advanced filtering and search capabilities for GitHub Issues. Filter by multiple labels, assignees, and status with a modern UI.",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.1.0",
+  "author": "Aswin",
   "type": "module",
   "scripts": {
     "dev": "wxt",
