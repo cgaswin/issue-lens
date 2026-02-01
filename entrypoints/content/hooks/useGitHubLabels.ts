@@ -3,19 +3,19 @@ import { Assignee, Label } from '../types';
 
 /**
  * Hook to extract labels and assignees.
- * Includes strict cleaning logic to avoid UI noise and bad data.
+ * Optimized for fast initial render with background API loading.
  */
 export function useGitHubLabels() {
   const [labels, setLabels] = useState<Label[]>([]);
   const [assignees, setAssignees] = useState<Assignee[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const extractData = async () => {
-      // --- LABELS EXTRACTION ---
-      // Use Map to store labels with colors (keyed by name to dedupe)
+    // Fast initial extraction from page and cache
+    const quickExtract = async () => {
       const labelMap = new Map<string, Label>();
-
-      // Default colors for labels without color info
+      const assigneeMap = new Map<string, string>();
+      
       const defaultColor = 'rgba(128, 128, 128, 0.18)';
       const defaultTextColor = 'rgb(200, 200, 200)';
 
@@ -34,8 +34,6 @@ export function useGitHubLabels() {
       const addLabel = (name: string, color?: string, textColor?: string) => {
         const cleanName = name.trim();
         if (!isValidLabelName(cleanName)) return;
-
-        // Only update if we don't have this label yet, or if we have better color info
         const existing = labelMap.get(cleanName);
         if (!existing || (color && color !== defaultColor)) {
           labelMap.set(cleanName, {
@@ -46,183 +44,38 @@ export function useGitHubLabels() {
         }
       };
 
-      // --- ASSIGNEES MAP ---
-      const assigneeMap = new Map<string, string>(); // login -> avatarUrl
-
       const addAssignee = (login: string | null | undefined, avatar?: string | null) => {
         if (!login) return;
         const cleanLogin = login.trim();
-        if (cleanLogin &&
-          /^[a-zA-Z0-9-]+$/.test(cleanLogin) &&
-          !cleanLogin.includes('/') &&
-          cleanLogin !== 'issue-lens'
-        ) {
-          // Keep existing avatar if new one is missing, otherwise update
+        if (cleanLogin && /^[a-zA-Z0-9-]+$/.test(cleanLogin) && !cleanLogin.includes('/')) {
           if (!assigneeMap.has(cleanLogin) || avatar) {
             assigneeMap.set(cleanLogin, avatar || assigneeMap.get(cleanLogin) || '');
           }
         }
       };
 
-      // 1. Scrape current page FIRST to get colors from TrailingBadge elements
-      // GitHub's React/styled-components UI (2024+)
+      // 1. Quick scrape from current page
       document.querySelectorAll('[class*="TrailingBadge-module__container"] a').forEach(el => {
-        // Find the first span with TokenBase class to get computed styles
         const tokenSpan = el.querySelector('span');
         if (!tokenSpan) return;
-
         const style = getComputedStyle(tokenSpan);
-        const bgColor = style.backgroundColor;
-        const txtColor = style.color;
-
-        // Find innermost spans (no children) and take only the first one for the name
         const spans = el.querySelectorAll('span');
         for (const span of spans) {
           if (span.children.length === 0) {
             const text = span.textContent?.trim();
             if (text && isValidLabelName(text)) {
-              addLabel(text, bgColor, txtColor);
+              addLabel(text, style.backgroundColor, style.color);
               break;
             }
           }
         }
       });
 
-      // 2. Fetch labels from GitHub API
-      const path = window.location.pathname.split('/');
-      if (path.length >= 3) {
-        const owner = path[1];
-        const repo = path[2];
-        const cacheKeyLabels = `issue-lens:v1:${owner}:${repo}:labels`;
-        const cacheKeyAssignees = `issue-lens:v1:${owner}:${repo}:assignees`;
-        const CACHE_DURATION = 60 * 60 * 1000; // 1 hour
-
-        // Helper to check cache
-        const getCachedData = async (key: string) => {
-          try {
-            const result = await browser.storage.local.get(key);
-            const cached = result[key] as { timestamp: number; data: any[] } | undefined;
-            if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
-              return cached.data;
-            }
-          } catch (e) {
-            console.error('[Issue Lens] Cache read error:', e);
-          }
-          return null;
-        };
-
-        // Helper to set cache
-        const setCachedData = async (key: string, data: any[]) => {
-          try {
-            await browser.storage.local.set({
-              [key]: { timestamp: Date.now(), data }
-            });
-          } catch (e) {
-            console.error('[Issue Lens] Cache write error:', e);
-          }
-        };
-
-        const apiUrl = `https://api.github.com/repos/${owner}/${repo}`;
-
-        // Helper to fetch all pages from API
-        const fetchAllPages = async (endpoint: string, processItem: (item: any) => void) => {
-          let page = 1;
-          const maxPages = 20;
-          const allItems: any[] = [];
-
-          while (page <= maxPages) {
-            try {
-              // API requests are rate limited (60/hr/IP unauthenticated)
-              const response = await fetch(`${apiUrl}/${endpoint}?page=${page}&per_page=100`);
-
-              if (!response.ok) {
-                if (response.status === 403 || response.status === 429) {
-                  console.warn(`[Issue Lens] API rate limited for ${endpoint}`);
-                }
-                break;
-              }
-
-              const data = await response.json();
-              if (!Array.isArray(data) || data.length === 0) break;
-
-              allItems.push(...data);
-              data.forEach(processItem);
-
-              // If we got fewer than 100 items, we've reached the end
-              if (data.length < 100) break;
-
-              page++;
-            } catch (e) {
-              console.error(`[Issue Lens] Error fetching ${endpoint}:`, e);
-              break;
-            }
-          }
-          return allItems;
-        };
-
-        // Helper to determine text color based on background luminance
-        const getTextColor = (hex: string) => {
-          const r = parseInt(hex.substring(0, 2), 16);
-          const g = parseInt(hex.substring(2, 4), 16);
-          const b = parseInt(hex.substring(4, 6), 16);
-          const yiq = ((r * 299) + (g * 587) + (b * 114)) / 1000;
-          return (yiq >= 128) ? 'black' : 'white';
-        };
-
-        // Fetch Labels
-        const cachedLabels = await getCachedData(cacheKeyLabels);
-        if (cachedLabels) {
-          cachedLabels.forEach((item: any) => {
-            if (item && item.name) {
-              const textColor = getTextColor(item.color);
-              addLabel(item.name, `#${item.color}`, textColor);
-            }
-          });
-        } else {
-          const allLabels = await fetchAllPages('labels', (item) => {
-            if (item && item.name) {
-              const textColor = getTextColor(item.color);
-              addLabel(item.name, `#${item.color}`, textColor);
-            }
-          });
-          if (allLabels.length > 0) {
-            setCachedData(cacheKeyLabels, allLabels);
-          }
-        }
-
-        // Fetch Assignees
-        const cachedAssignees = await getCachedData(cacheKeyAssignees);
-        if (cachedAssignees) {
-          cachedAssignees.forEach((item: any) => {
-            if (item && item.login) {
-              addAssignee(item.login, item.avatar_url);
-            }
-          });
-        } else {
-          const allAssignees = await fetchAllPages('assignees', (item) => {
-            if (item && item.login) {
-              addAssignee(item.login, item.avatar_url);
-            }
-          });
-          if (allAssignees.length > 0) {
-            setCachedData(cacheKeyAssignees, allAssignees);
-          }
-        }
-      }
-
-      // 3. Additional page scraping for labels without colors
       document.querySelectorAll('[data-name]').forEach(el => {
         const name = el.getAttribute('data-name');
         if (name) addLabel(name);
       });
 
-      // Convert to sorted array
-      const sortedLabels = Array.from(labelMap.values()).sort((a, b) => a.name.localeCompare(b.name));
-      setLabels(sortedLabels);
-
-      // --- ADDITIONAL ASSIGNEE EXTRACTION FROM CURRENT PAGE ---
-
-      // 1. Avatars (Best source for images)
       document.querySelectorAll('img.avatar').forEach(el => {
         const alt = el.getAttribute('alt');
         const src = el.getAttribute('src');
@@ -231,18 +84,15 @@ export function useGitHubLabels() {
         }
       });
 
-      // 2. Filter Dropdown
       document.querySelectorAll('[data-filter-item-type="assignee"] [data-filter-item-id]').forEach(el => {
         const login = el.getAttribute('data-filter-item-id');
         const img = el.querySelector('img');
         addAssignee(login, img?.getAttribute('src'));
       });
 
-      // 3. User links with hovercards
       document.querySelectorAll('a[data-hovercard-type="user"]').forEach(el => {
         const text = el.textContent?.trim();
         const img = el.querySelector('img') || el.closest('div')?.querySelector('img.avatar');
-
         if (text && !text.includes(' ') && !text.includes('\n')) {
           addAssignee(text, img?.getAttribute('src'));
         } else {
@@ -254,52 +104,171 @@ export function useGitHubLabels() {
               if (parts.length === 1) {
                 addAssignee(parts[0], img?.getAttribute('src'));
               }
-            } catch (e) { /* ignore */ }
+            } catch { /* ignore */ }
           }
         }
       });
 
+      // 2. Load from cache immediately if available
+      const path = window.location.pathname.split('/');
+      if (path.length >= 3) {
+        const owner = path[1];
+        const repo = path[2];
+        const cacheKeyLabels = `issue-lens:v1:${owner}:${repo}:labels`;
+        const cacheKeyAssignees = `issue-lens:v1:${owner}:${repo}:assignees`;
+        const CACHE_DURATION = 60 * 60 * 1000;
+
+        try {
+          const [labelResult, assigneeResult] = await Promise.all([
+            browser.storage.local.get(cacheKeyLabels),
+            browser.storage.local.get(cacheKeyAssignees)
+          ]);
+
+          const getTextColor = (hex: string) => {
+            const r = parseInt(hex.substring(0, 2), 16);
+            const g = parseInt(hex.substring(2, 4), 16);
+            const b = parseInt(hex.substring(4, 6), 16);
+            const yiq = ((r * 299) + (g * 587) + (b * 114)) / 1000;
+            return (yiq >= 128) ? 'black' : 'white';
+          };
+
+          const cachedLabels = labelResult[cacheKeyLabels] as { timestamp: number; data: any[] } | undefined;
+          if (cachedLabels && Date.now() - cachedLabels.timestamp < CACHE_DURATION) {
+            cachedLabels.data.forEach((item: any) => {
+              if (item?.name) {
+                const textColor = getTextColor(item.color);
+                addLabel(item.name, `#${item.color}`, textColor);
+              }
+            });
+          }
+
+          const cachedAssignees = assigneeResult[cacheKeyAssignees] as { timestamp: number; data: any[] } | undefined;
+          if (cachedAssignees && Date.now() - cachedAssignees.timestamp < CACHE_DURATION) {
+            cachedAssignees.data.forEach((item: any) => {
+              if (item?.login) {
+                addAssignee(item.login, item.avatar_url);
+              }
+            });
+          }
+        } catch (e) {
+          console.error('[Issue Lens] Cache read error:', e);
+        }
+      }
+
+      // Update UI immediately with what we have
+      const sortedLabels = Array.from(labelMap.values()).sort((a, b) => a.name.localeCompare(b.name));
       const assigneesList = Array.from(assigneeMap.entries())
         .map(([login, avatarUrl]) => ({
           login,
-          // Fallback to GitHub's public avatar URL if we didn't capture one
           avatarUrl: avatarUrl || `https://github.com/${login}.png?size=60`
         }))
         .sort((a, b) => a.login.localeCompare(b.login));
 
+      setLabels(sortedLabels);
       setAssignees(assigneesList);
+      setIsLoading(false);
     };
 
-    // Multiple extraction attempts to handle timing issues
-    const timeouts: NodeJS.Timeout[] = [];
-    [100, 500, 1000, 2000, 3000].forEach(delay => {
-      timeouts.push(setTimeout(extractData, delay));
-    });
+    // Background API fetch for fresh data
+    const fetchFromApi = async () => {
+      const path = window.location.pathname.split('/');
+      if (path.length < 3) return;
 
-    // Watch for DOM changes that might indicate labels loading
-    const observer = new MutationObserver((mutations) => {
-      const hasRelevantChanges = mutations.some(m =>
-        m.type === 'childList' && m.addedNodes.length > 0
-      );
-      if (hasRelevantChanges) {
-        // Debounce extraction
-        setTimeout(extractData, 300);
+      const owner = path[1];
+      const repo = path[2];
+      const cacheKeyLabels = `issue-lens:v1:${owner}:${repo}:labels`;
+      const cacheKeyAssignees = `issue-lens:v1:${owner}:${repo}:assignees`;
+      const CACHE_DURATION = 60 * 60 * 1000;
+
+      try {
+        const [labelResult, assigneeResult] = await Promise.all([
+          browser.storage.local.get(cacheKeyLabels),
+          browser.storage.local.get(cacheKeyAssignees)
+        ]);
+
+        const cachedLabels = labelResult[cacheKeyLabels] as { timestamp: number; data: any[] } | undefined;
+        const cachedAssignees = assigneeResult[cacheKeyAssignees] as { timestamp: number; data: any[] } | undefined;
+
+        // Skip API if we have fresh cache
+        if (cachedLabels && cachedAssignees && 
+            Date.now() - cachedLabels.timestamp < CACHE_DURATION &&
+            Date.now() - cachedAssignees.timestamp < CACHE_DURATION) {
+          return;
+        }
+
+        const apiUrl = `https://api.github.com/repos/${owner}/${repo}`;
+
+        const fetchAllPages = async (endpoint: string) => {
+          let page = 1;
+          const maxPages = 20;
+          const allItems: any[] = [];
+
+          while (page <= maxPages) {
+            try {
+              const response = await fetch(`${apiUrl}/${endpoint}?page=${page}&per_page=100`);
+              if (!response.ok) {
+                if (response.status === 403 || response.status === 429) {
+                  console.warn(`[Issue Lens] API rate limited for ${endpoint}`);
+                }
+                break;
+              }
+              const data = await response.json();
+              if (!Array.isArray(data) || data.length === 0) break;
+              allItems.push(...data);
+              if (data.length < 100) break;
+              page++;
+            } catch (e) {
+              console.error(`[Issue Lens] Error fetching ${endpoint}:`, e);
+              break;
+            }
+          }
+          return allItems;
+        };
+
+        const [labelsData, assigneesData] = await Promise.all([
+          fetchAllPages('labels'),
+          fetchAllPages('assignees')
+        ]);
+
+        if (labelsData.length > 0) {
+          await browser.storage.local.set({
+            [cacheKeyLabels]: { timestamp: Date.now(), data: labelsData }
+          });
+        }
+
+        if (assigneesData.length > 0) {
+          await browser.storage.local.set({
+            [cacheKeyAssignees]: { timestamp: Date.now(), data: assigneesData }
+          });
+        }
+
+        // Refresh UI with API data if we got new data
+        if (labelsData.length > 0 || assigneesData.length > 0) {
+          quickExtract();
+        }
+      } catch (e) {
+        console.error('[Issue Lens] API fetch error:', e);
       }
-    });
-    observer.observe(document.body, { childList: true, subtree: true });
+    };
 
-    const handleTurbo = () => setTimeout(extractData, 500);
-    document.addEventListener('turbo:load', handleTurbo);
-    document.addEventListener('turbo:render', handleTurbo);
-    window.addEventListener('popstate', () => setTimeout(extractData, 500));
+    // Run quick extract immediately
+    quickExtract();
+    
+    // Fetch fresh data in background
+    fetchFromApi();
+
+    // Re-extract on page changes
+    const handleChange = () => setTimeout(quickExtract, 300);
+    document.addEventListener('turbo:load', handleChange);
+    document.addEventListener('turbo:render', handleChange);
+    window.addEventListener('popstate', handleChange);
 
     return () => {
-      timeouts.forEach(clearTimeout);
-      observer.disconnect();
-      document.removeEventListener('turbo:load', handleTurbo);
-      document.removeEventListener('turbo:render', handleTurbo);
+      document.removeEventListener('turbo:load', handleChange);
+      document.removeEventListener('turbo:render', handleChange);
+      window.removeEventListener('popstate', handleChange);
     };
   }, []);
 
-  return { labels, assignees };
+  return { labels, assignees, isLoading };
 }

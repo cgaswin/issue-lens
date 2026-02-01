@@ -69,24 +69,39 @@ function injectButton(onClick: () => void): boolean {
     existing.remove();
   }
 
-  // Find the buttons container (next to Labels/Milestones)
-  const buttonsContainer = document.querySelector('.SearchBarActions-module__buttons--DBEMp') ||
-    document.querySelector('[class*="SearchBarActions-module__buttons"]');
+  // Find the search/filter actions toolbar - try multiple selectors
+  const buttonsContainer = 
+    // Primary: Look for any container with buttons that has Labels/Milestones
+    document.querySelector('.ActionList-module__actionList--Tnkgx') ||
+    document.querySelector('nav[aria-label="Issues filters"]') ||
+    document.querySelector('.search-clear-button')?.closest('div[class*="ActionList"]') ||
+    // Fallback: find by looking for Labels button and getting its parent
+    document.querySelector('a[href*="/labels"]')?.closest('div[class*="ActionList"], div[class*="ButtonGroup"]') ||
+    document.querySelector('a[href*="/milestones"]')?.closest('div[class*="ActionList"], div[class*="ButtonGroup"]') ||
+    // Legacy fallbacks
+    document.querySelector('.SearchBarActions-module__buttons--DBEMp') ||
+    document.querySelector('[class*="SearchBarActions-module__buttons"]') ||
+    // Very broad: any container with both Labels and Milestones links
+    Array.from(document.querySelectorAll('div')).find(div => 
+      div.querySelector('a[href*="/labels"]') && 
+      div.querySelector('a[href*="/milestones"]')
+    );
 
   if (buttonsContainer) {
     const button = createIssueLensButton(onClick);
-    // Insert before Labels button
+    
+    // Try to insert before Labels button for consistency
     const labelsBtn = buttonsContainer.querySelector('a[href*="/labels"]');
     if (labelsBtn) {
       labelsBtn.before(button);
     } else {
       buttonsContainer.prepend(button);
     }
-    console.log('[Issue Lens] Button injected into toolbar');
+    
+    console.log('[Issue Lens] Button injected successfully');
     return true;
   }
 
-  console.log('[Issue Lens] Buttons container not found');
   return false;
 }
 
@@ -102,14 +117,7 @@ export default defineContentScript({
       window.dispatchEvent(new CustomEvent('issue-lens:open-panel'));
     };
 
-    // Try to inject button, retry if DOM not ready
-    const tryInject = () => {
-      if (!injectButton(openPanel)) {
-        setTimeout(tryInject, 500);
-      }
-    };
-
-    // Create shadow DOM for the panel only
+    // Create shadow DOM for the panel first (fast)
     const ui = await createShadowRootUi(ctx, {
       name: 'issue-lens-panel',
       position: 'overlay',
@@ -126,36 +134,62 @@ export default defineContentScript({
 
     ui.mount();
 
-    // Inject button after page is ready
-    setTimeout(tryInject, 500);
+    // Try to inject button immediately and retry aggressively
+    let attempts = 0;
+    const maxAttempts = 100; // Max 10 seconds of retrying
+    
+    const tryInject = () => {
+      attempts++;
+      const injected = injectButton(openPanel);
+      
+      if (!injected && attempts < maxAttempts) {
+        // Retry faster (100ms) for better responsiveness
+        setTimeout(tryInject, 100);
+      } else if (injected) {
+        console.log(`[Issue Lens] Button injected after ${attempts} attempt(s)`);
+      } else {
+        console.log('[Issue Lens] Failed to inject button after max attempts');
+      }
+    };
 
-    // Watch for the specific toolbar container to be added to DOM
+    // Start immediately
+    tryInject();
+
+    // Watch for DOM changes that might add the toolbar
     const observer = new MutationObserver((mutations) => {
-      // Fast check if our container might be present
-      const addedNodes = mutations.flatMap(m => Array.from(m.addedNodes));
-      const hasRelevantUpdates = addedNodes.some(node => 
-        node instanceof Element && (
-          node.classList?.contains('SearchBarActions-module__buttons--DBEMp') || 
-          node.querySelector?.('.SearchBarActions-module__buttons--DBEMp') ||
-          node.querySelector?.('[class*="SearchBarActions-module__buttons"]')
-        )
-      );
+      // Check if any added node is or contains our target
+      const hasRelevantUpdates = mutations.some(m => {
+        return Array.from(m.addedNodes).some(node => {
+          if (!(node instanceof Element)) return false;
+          // Check if it's the toolbar or contains it
+          return (
+            node.querySelector?.('a[href*="/labels"]') ||
+            node.querySelector?.('a[href*="/milestones"]') ||
+            node.querySelector?.('.ActionList-module__actionList--Tnkgx')
+          );
+        });
+      });
       
       if (hasRelevantUpdates) {
+        attempts = 0; // Reset attempts when we see relevant changes
         tryInject();
       }
     });
     
-    // Start observing the document body for changes
     observer.observe(document.body, { 
       childList: true, 
       subtree: true 
     });
 
     // Re-inject on GitHub's turbo navigation
-    document.addEventListener('turbo:load', () => setTimeout(tryInject, 300));
-    document.addEventListener('turbo:render', () => setTimeout(tryInject, 300));
+    const handleNavigation = () => {
+      attempts = 0;
+      setTimeout(tryInject, 100);
+    };
+    
+    document.addEventListener('turbo:load', handleNavigation);
+    document.addEventListener('turbo:render', handleNavigation);
 
-    console.log('[Issue Lens] Setup complete');
+    console.log('[Issue Lens] Setup complete - button injection active');
   },
 });
