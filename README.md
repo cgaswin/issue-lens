@@ -1,6 +1,6 @@
 # Issue Lens
 
-[![Version](https://img.shields.io/badge/version-0.1.0-blue.svg)](https://github.com/cgaswin/issue-lens)
+[![Version](https://img.shields.io/badge/version-0.1.1-blue.svg)](https://github.com/cgaswin/issue-lens)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
 A modern browser extension that adds advanced filtering and search capabilities to GitHub Issues. Built with React, TypeScript, and Tailwind CSS.
