@@ -95,7 +95,6 @@ Issue Lens respects your privacy:
 - No external API calls except to GitHub
 - All processing happens locally in your browser
 
-See our [Privacy Policy](PRIVACY.md) for details.
 
 ## Browser Permissions
 
@@ -115,16 +114,6 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 ## License
 
 This project is licensed under the MIT License.
-
-## Acknowledgments
-
-- Built with [WXT](https://wxt.dev) - Next-gen web extension framework
-- UI components from [shadcn/ui](https://ui.shadcn.com) and [Radix UI](https://radix-ui.com)
-- Styled with [Tailwind CSS](https://tailwindcss.com)
-
-## Support
-
-If you encounter any issues or have suggestions, please [open an issue](https://github.com/yourusername/issue-lens/issues).
 
 ---
 
