@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-03-09
+
+### Fixed
+- Fixed extension activation reliability on GitHub by running content script across github.com and route-gating behavior to issues pages
+- Fixed initial load issue where the Issue Lens button would often only appear after manual page refresh
+- Fixed unstable button placement and improved anchor selection so the button stays near Labels/Milestones
+
+### Changed
+- Refactored content script startup into modular controller, signal handling, anchor detection, and mount logic for easier maintenance
+
 ## [0.1.1] - 2026-02-01
 
 ### Fixed
@@ -55,5 +65,4 @@ Before each release:
 - [ ] Build: `bun run zip:firefox`
 - [ ] Submit to Firefox Add-ons
 - [ ] Add release notes in AMO dashboard
-
 
